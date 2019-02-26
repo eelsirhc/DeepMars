@@ -1,7 +1,10 @@
-from . import rcnn
+import rcnn
 import click
 from dotenv import find_dotenv, load_dotenv
-
+import logging
+from pathlib import Path
+import os
+import numpy as np
 
 minrad_ = 5
 maxrad_ = 40
@@ -30,12 +33,12 @@ def dl():
 def train_rcnn(config, MP):
 
     # training dataset
-    dataset_train = CraterDataset()
+    dataset_train = rcnn.CraterDataset()
     dataset_train.load_shapes(MP["train_indices"])
     dataset_train.prepare()
 
     # Validation dataset
-    dataset_val = CraterDataset()
+    dataset_val = rcnn.CraterDataset()
     dataset_val.load_shapes(MP["dev_indices"])
     dataset_val.prepare()
 
@@ -165,7 +168,7 @@ def train_model(model):
     #    MP['N_runs'] = 2
     #    MP['lambda']=[1e-4,1e-4]
     print(MP)
-    class CraterConfig(Config):
+    class CraterConfig(rcnn.Config):
         # Give the configuration a recognizable name
         NAME = "craters"
         # Train on 1 GPU and 8 images per GPU. We can put multiple images on each

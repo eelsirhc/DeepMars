@@ -1,10 +1,11 @@
-from .mrcnn.config import Config
-from .mrcnn import utils
-import .mrcnn.model as modellib
-from .mrcnn import visualize
-from .mrcnn.model import log
+from mrcnn.config import Config
+from mrcnn import utils
+import mrcnn.model as modellib
+from mrcnn import visualize
+from mrcnn.model import log
 import h5py
 import pandas as pd
+import numpy as np
 
 class CraterConfig(Config):
     """Configuration for training on the toy shapes dataset.
@@ -47,7 +48,7 @@ class CraterDataset(utils.Dataset):
         pass
 
 
-    def load_mas(self, image_id):
+    def load_mask(self, image_id):
         pass
 
 
@@ -57,7 +58,7 @@ class CraterDataset(utils.Dataset):
 
     def load_shapes(self, indices):
         self.index = indices
-        self.directory = "/disks/work/lee/DL/MarsCraters/deepmars/data/processed/"
+        self.directory = "/disks/work/lee/DL/dmrcnn/data/processed/"
 
         self.image_file = []
         self.crater_file = []
