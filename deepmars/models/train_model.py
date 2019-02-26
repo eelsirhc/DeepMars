@@ -5,7 +5,7 @@ Functions for building and training a (UNET) Convolutional Neural Network on
 images of the Moon and binary ring targets.
 """
 from __future__ import absolute_import, division, print_function
-
+import os
 import numpy as np
 import pandas as pd
 import h5py
@@ -17,20 +17,20 @@ from keras.regularizers import l2
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping
 from keras import backend as K
-K.set_image_dim_ordering('tf')
-
-import deepmars.features.template_match_target as tmt
-import deepmars.utils.processing as proc
 
 import click
 import logging
+
 from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
-import os
 from joblib import Parallel, delayed
 from tqdm import tqdm, trange
 
 # Check Keras version - code will switch API if needed.
+K.set_image_dim_ordering('tf')
+import deepmars.features.template_match_target as tmt
+import deepmars.utils.processing as proc
+
 from keras import __version__ as keras_version
 k2 = True if keras_version[0] == '2' else False
 
@@ -57,6 +57,7 @@ else:
                       kernel_regularizer=W_regularizer,
                       padding=border_mode)
 
+
 @click.group()
 def dl():
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -64,7 +65,6 @@ def dl():
 
     # not used in this stub but often useful for finding various files
     project_dir = Path(__file__).resolve().parents[2]
-
 
     # find .env automagically by walking up directories until it's found, then
     # load up the .env entries as environment variables
@@ -111,13 +111,12 @@ def custom_image_generator(data, target, batch_size=32):
     Yields
     ------
     Manipulated images and targets.
-        
     """
     L, W = data[0].shape[0], data[0].shape[1]
     while True:
         for i in trange(0, len(data), batch_size):
-#            print("a",i,batch_size, len(data))
-            d, t = data[i:i + batch_size].copy(), target[i:i + batch_size].copy()
+            d, t = (data[i:i + batch_size].copy(),
+                    target[i:i + batch_size].copy())
 
             # Random color inversion
             # for j in np.where(np.random.randint(0, 2, batch_size) == 1)[0]:
@@ -125,10 +124,8 @@ def custom_image_generator(data, target, batch_size=32):
 
             # Horizontal/vertical flips
             for j in np.where(np.random.randint(0, 2, batch_size) == 1)[0]:
-#                print(d.shape, t.shape, batch_size)
                 d[j], t[j] = np.fliplr(d[j]), np.fliplr(t[j])      # left/right
             for j in np.where(np.random.randint(0, 2, batch_size) == 1)[0]:
-#                print(d.shape, t.shape, batch_size)
                 d[j], t[j] = np.flipud(d[j]), np.flipud(t[j])      # up/down
 
             # Random up/down & left/right pixel shifts, 90 degree rotations
@@ -145,30 +142,31 @@ def custom_image_generator(data, target, batch_size=32):
                 d[j], t[j] = np.rot90(d[j], r[j]), np.rot90(t[j], r[j])
             yield (d, t)
 
-def t2c(pred, csv,i):
-    return np.hstack([i,tmt.template_match_t2c(pred, csv, rmv_oor_csvs=0)])
+
+def t2c(pred, csv, i):
+    return np.hstack([i, tmt.template_match_t2c(pred, csv, rmv_oor_csvs=0)])
+
 
 def diagnostic(res,beta):
-    counter,N_match, N_csv, N_detect, maxrad, err_lo, err_la, err_r, frac_duplicates = np.array(res).T
-       
-    w=np.where(N_match==0)
-    #if len(w[0]):
-    #    for i in w[0]:
-    #        print("skipping iteration %d,N_csv=%d,N_detect=%d,N_match=%d" %
-    #              (counter[i], N_csv[i], N_detect[i], N_match[i]))
+    (counter, N_match, N_csv, N_detect,
+     maxrad, err_lo, err_la, err_r, frac_duplicates) = np.array(res).T
 
-    w=np.where(N_match>0)
-    counter,N_match, N_csv, N_detect, maxrad, err_lo, err_la, errr_, frac_dupes =\
-        counter[w],N_match[w], N_csv[w], N_detect[w], maxrad[w], err_lo[w], err_la[w], err_r[w], frac_duplicates[w]
-    
+    # w = np.where(N_match == 0)
+    w = np.where(N_match > 0)
+    (counter, N_match, N_csv, N_detect,
+     maxrad, err_lo, err_la, errr_, frac_dupes) = (
+        counter[w], N_match[w], N_csv[w], N_detect[w],
+        maxrad[w], err_lo[w], err_la[w], err_r[w], frac_duplicates[w])
+
     precision = N_match/(N_match + (N_detect - N_match))
     recall = N_match/N_csv
-    fscore = (1 + beta**2) * (recall * precision) / (precision * beta**2 + recall)
+    fscore = ((1 + beta**2) * (recall * precision) /
+              (precision * beta**2 + recall))
     diff = N_detect - N_match
     frac_new = diff / (N_detect + diff)
     frac_new2 = diff / (N_csv + diff)
     frac_duplicates = frac_dupes
-    
+
     return dict(precision=precision,
                 recall=recall,
                 fscore=fscore,
@@ -181,15 +179,15 @@ def diagnostic(res,beta):
                 maxrad=maxrad)
 
 
-def get_metrics(data, craters, dim, inpreds, beta=1,offset=0):
-    """Function that prints pertinent metrics at the end of each epoch. 
+def get_metrics(data, craters, dim, inpreds, beta=1, offset=0):
+    """Function that prints pertinent metrics at the end of each epoch.
 
     Parameters
     ----------
     data : hdf5
         Input images.
     craters : hdf5
-        Pandas arrays of human-counted crater data. 
+        Pandas arrays of human-counted crater data.
     dim : int
         Dimension of input images (assumes square).
     model : keras model object
@@ -203,14 +201,12 @@ def get_metrics(data, craters, dim, inpreds, beta=1,offset=0):
     csvs = []
     minrad, maxrad, cutrad, n_csvs = 3, 50, 0.8, len(X)
     diam = 'Diameter (pix)'
-    #print(n_csvs,list(craters.keys()))
+    # print(n_csvs,list(craters.keys()))
     for i in range(offset, offset+n_csvs):
         name = "img_{0:05d}".format(i)
         if name not in craters:
             csvs.append([-2])
-#            print("not found: ",name)
             continue
-#        print("found: ",name)
         csv = craters[name]
         # remove small/large/half craters
         csv = csv[(csv[diam] < 2 * maxrad) & (csv[diam] > 2 * minrad)]
@@ -232,35 +228,37 @@ def get_metrics(data, craters, dim, inpreds, beta=1,offset=0):
     frac_new, frac_new2, maxrad = [], [], []
     err_lo, err_la, err_r = [], [], []
     frac_duplicates = []
-    #print(type(inpreds))
     if isinstance(inpreds, Model):
         preds = inpreds.predict(X)
 #        preds = inpreds#model.predict(X)
     else:
         preds = inpreds
-    #print(csvs)
-    res = Parallel(n_jobs=8, verbose=5)(delayed(t2c)(preds[i], csvs[i],i) for i in range(n_csvs) if len(csvs[i])>=3)
+    res = Parallel(n_jobs=8, verbose=5)(delayed(t2c)(preds[i], csvs[i], i)
+                                        for i in range(n_csvs)
+                                        if len(csvs[i]) >= 3)
 
-    if len(res)==0:
+    if len(res) == 0:
         print("No valid results: ", res)
         return None
     diag = diagnostic(res,beta)
     print(diag["recall"])
-    #print("binary XE score = %f" % model.evaluate(X, Y))
     if len(diag["recall"]) > 3:
-        for name,data in [("N_match/N_csv (recall)",diag["recall"]),
-                         ("N_match/(N_match + (N_detect-N_match)) (precision)",diag["precision"]),
-                         ("F_{} score".format(beta), diag["fscore"]),
-                         ("(N_detect - N_match)/N_detect (fraction of craters that are new)", diag["frac_new"]),
-                         ("(N_detect - N_match)/N_csv (fraction of craters that are new, 2)", diag["frac_new2"])]:
+        for name, data in [("N_match/N_csv (recall)", diag["recall"]),
+                           ("N_match/(N_match + (N_detect-N_match)) (precision)", diag["precision"]),
+                           ("F_{} score".format(beta), diag["fscore"]),
+                           ("(N_detect - N_match)/N_detect (fraction of craters that are new)", diag["frac_new"]),
+                           ("(N_detect - N_match)/N_csv (fraction of craters that are new, 2)", diag["frac_new2"])]:
             print("mean and std of %s = %f, %f" %
-                  (name,np.mean(data), np.std(data)))
-        for name,data in [("fractional longitude diff",diag["err_lo"]),
-                          ("fractional latitude diff",diag["err_la"]),
-                          ("fractional radius diff", diag["err_r"]),
-                         ]:
+                  (name, np.mean(data), np.std(data)))
+        for name, data in [("fractional longitude diff", diag["err_lo"]),
+                           ("fractional latitude diff", diag["err_la"]),
+                           ("fractional radius diff", diag["err_r"]),
+                          ]:
             print("median and IQR %s = %f, 25:%f, 75:%f" %
-             (name, np.median(data), np.percentile(data, 25), np.percentile(data, 75)))
+                  (name,
+                   np.median(data),
+                   np.percentile(data, 25),
+                   np.percentile(data, 75)))
 
         print("""mean and std of maximum detected pixel radius in an image =
              %f, %f""" % (np.mean(diag["maxrad"]), np.std(diag["maxrad"])))
@@ -269,9 +267,9 @@ def get_metrics(data, craters, dim, inpreds, beta=1,offset=0):
         print("")
         return diag
 
-########################
+
 def build_model(dim, learn_rate, lmbda, drop, FL, init, n_filters):
-    """Function that builds the (UNET) convolutional neural network. 
+    """Function that builds the (UNET) convolutional neural network.
 
     Parameters
     ----------
@@ -280,7 +278,7 @@ def build_model(dim, learn_rate, lmbda, drop, FL, init, n_filters):
     learn_rate : float
         Learning rate.
     lmbda : float
-        Convolution2D regularization parameter. 
+        Convolution2D regularization parameter.
     drop : float
         Dropout fraction.
     FL : int
@@ -361,10 +359,10 @@ def build_model(dim, learn_rate, lmbda, drop, FL, init, n_filters):
 
     return model
 
-########################
+
 def train_and_test_model(Data, Craters, MP, i_MP):
     """Function that trains, tests and saves the model, printing out metrics
-    after each model. 
+    after each model.
 
     Parameters
     ----------
@@ -430,11 +428,11 @@ def train_and_test_model(Data, Craters, MP, i_MP):
           n_train=%d, img_dimensions=%d, init=%s, n_filters=%d, lambda=%e
           dropout=%f""" % (learn_rate, bs, FL, nb_epoch, MP['n_train'],
                            MP['dim'], init, n_filters, lmbda, drop))
-    get_metrics(Data['test'], Craters['test'], dim, model,offset=54000)
+    get_metrics(Data['test'], Craters['test'], dim, model, offset=54000)
     print("###################################")
     print("###################################")
 
-########################
+
 def get_models(MP):
     """Top-level function that loads data files and calls train_and_test_model.
 
@@ -454,7 +452,7 @@ def get_models(MP):
         'train': [train['input_images'][:n_train].astype('float32'),
                   train['target_masks'][:n_train].astype('float32')],
         'dev': [dev['input_images'][:n_dev].astype('float32'),
-                  dev['target_masks'][:n_dev].astype('float32')],
+                dev['target_masks'][:n_dev].astype('float32')],
         'test': [test['input_images'][:n_test].astype('float32'),
                  test['target_masks'][:n_test].astype('float32')]
     }
@@ -480,35 +478,35 @@ def get_models(MP):
 @dl.command()
 def train_model():
     """Run Convolutional Neural Network Training
-    
+
     Execute the training of a (UNET) Convolutional Neural Network on
     images of the Moon and binary ring targets.
     """
-    
+
     # Model Parameters
     MP = {}
-    
+
     # Directory of train/dev/test image and crater hdf5 files.
-    MP['dir'] = os.path.join(os.getenv("DM_ROOTDIR"),'data/catalogues/')
-    
+    MP['dir'] = os.path.join(os.getenv("DM_ROOTDIR"), 'data/catalogues/')
+
     # Image width/height, assuming square images.
     MP['dim'] = 256
-    
-    # Batch size: smaller values = less memory but less accurate gradient estimate
+
+    # Batch size: smaller values = less memory but less accurate gradient
     MP['bs'] = 10
-    
+
     # Number of training epochs.
     MP['epochs'] = 4
-    
+
     # Number of train/valid/test samples, needs to be a multiple of batch size.
     MP['n_train'] = 1000
     MP['n_dev'] = 1000
     MP['n_test'] = 1000
-    
+
     # Save model (binary flag) and directory.
     MP['save_models'] = 1
     MP['save_dir'] = 'models/model.h5'
-    
+
     # Model Parameters (to potentially iterate over, keep in lists).
     MP['N_runs'] = 1                # Number of runs
     MP['filter_length'] = [3]       # Filter length
@@ -517,7 +515,7 @@ def train_model():
     MP['init'] = ['he_normal']      # Weight initialization
     MP['lambda'] = [1e-6]           # Weight regularization
     MP['dropout'] = [0.15]          # Dropout fraction
-    
+
     # Iterating over parameters example.
     #    MP['N_runs'] = 2
     #    MP['lambda']=[1e-4,1e-4]
