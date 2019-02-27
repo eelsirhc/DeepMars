@@ -7,6 +7,15 @@ import h5py
 import pandas as pd
 import numpy as np
 import cv2
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                              format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                              datefmt='%m-%d %H:%M',
+                              filename='rcnn.log',
+                              filemode='w')
+
+logger = logging.getLogger("rcnn")
 
 class CraterConfig(Config):
     """Configuration for training on the toy shapes dataset.
@@ -45,19 +54,7 @@ class CraterConfig(Config):
 
 class CraterDataset(utils.Dataset):
     """Load the crater dataset from a pregenerated HDF5 file."""
-    def load_image(self, image_id):
-        pass
-
-
-    def load_mask(self, image_id):
-        pass
-
-
-    def image_reference(self, image_id):
-        pass
-
-
-    def load_shapes(self, indices):
+    def load_craters(self, indices):
         self.index = indices
         self.directory = "/disks/work/lee/DL/dmrcnn/data/processed/"
 
@@ -73,7 +70,7 @@ class CraterDataset(utils.Dataset):
             gen_imgs =  h5py.File(image_file, 'r')
             gen_craters = pd.HDFStore(crater_file, 'r')
             self.gen_imgs.append(gen_imgs)
-            self.add_class("shapes",1,"crater")
+            self.add_class("craters",1,"crater")
             count = len(gen_imgs["input_images"])
             self.count.append(count)
             from tqdm import tqdm, trange
@@ -84,19 +81,19 @@ class CraterDataset(utils.Dataset):
                 if image_name not in gen_craters:
                     continue
                 image=None
-                image = np.ones([256,256, 3], dtype=np.uint8)
-                im = gi[i]
-                image[:, :, 0] = im
-                image[:, :, 1] = im
-                image[:, :, 2] = im
-                
+#                image = np.ones([256,256, 3], dtype=np.uint8)
+#                im = gi[i]
+#                image[:, :, 0] = im
+#                image[:, :, 1] = im
+#                image[:, :, 2] = im
+#                
                 craters = gen_craters[image_name]
                 craters["Radius (pix)"] = craters["Diameter (pix)"]/2
                 craters = craters[craters["Diameter (pix)"] > 6]
                 craters = craters[["x","y","Radius (pix)"]].values.astype(int)
                 if len(craters) == 0:
                     continue
-                self.add_image("shapes", image_id=counter, path=jval,
+                self.add_image("craters", image_id=counter, path=jval,
                                width=256, height=256,
                                craters=craters, image=image, mask=None, class_ids=None,
                                image_name=image_name,
@@ -104,30 +101,34 @@ class CraterDataset(utils.Dataset):
 
 #            gen_craters.close()
 #            gen_imgs.close()
-                
+                 
     def load_image(self, image_id):
         """Generate an image from the specs of the given image ID.
         Typically this function loads the image from a file, but
         in this case it generates the image on the fly from the
         specs in image_info.
         """
+#        logger.info("image {}".format(image_id))
         info = self.image_info[image_id]
-#        if info["image"] is None:
-#            im = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-#            self.image_info[image_id]["image"] = im
-#        else:
-#            im = self.image_info[image_id]["image"]
-        image = np.ones([info['height'], info['width'], 3], dtype=np.uint8)
-        image[:,:,0] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-        image[:,:,1] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-        image[:,:,2] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+        if info["image"] is None:
+            im = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+            image = np.ones([info['height'], info['width'], 3], dtype=np.uint8)
+            image[:,:,0] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+            image[:,:,1] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+            image[:,:,2] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+            self.image_info[image_id]["image"] = image
+#            logger.info("cached {}".format(image_id))
+        else:
+            image = self.image_info[image_id]["image"]
+#            logger.info("missed {}".format(image_id))
+
         return image
 
     def image_reference(self, image_id):
-        """Return the shapes data of the image."""
+        """Return the craters data of the image."""
         info = self.image_info[image_id]
-        if info["source"] == "shapes":
-            return info["craters"]
+        if info["source"] == "craters":
+            return info["shapes"]
         else:
             super(self.__class__).image_reference(self, image_id)
 
@@ -135,6 +136,7 @@ class CraterDataset(utils.Dataset):
         """Generate instance masks for shapes of the given image ID.
         """
         info = self.image_info[image_id]
+#        logger.info("mask {}".format(image_id))
         if info["mask"] is None:
             craters = info['craters']
             count = len(craters)
