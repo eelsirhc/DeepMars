@@ -42,9 +42,14 @@ def train_rcnn(config, MP):
     dataset_val.load_shapes(MP["dev_indices"])
     dataset_val.prepare()
 
+    COCO_MODEL_PATH = os.path.join(MP["save_dir"], "mask_rcnn_coco.h5")
+    # Download COCO trained weights from Releases if needed
+    if not os.path.exists(COCO_MODEL_PATH):
+            rcnn.utils.download_trained_weights(COCO_MODEL_PATH)
+            
     # ## Create Model
     # Create model in training mode
-    model = modellib.MaskRCNN(mode="training",
+    model = rcnn.modellib.MaskRCNN(mode="training",
                               config=config,
                               model_dir=MP["save_dir"])
 
@@ -127,9 +132,9 @@ def train_model(model):
 
     # Number of train/valid/test samples, needs to be a multiple of batch size.
 
-    MP['train_indices'] = list(np.arange(162000, 208000, 2000))
-    MP['dev_indices']   = list(np.arange(161000, 206000, 4000))
-    MP['test_indices']  = list(np.arange(163000, 206000, 4000))
+    MP['train_indices'] = list(np.arange(160000,206000,2000)) #list(np.arange(162000, 208000, 2000))
+    MP['dev_indices']   = list(np.arange(161000,206000,4000)) #list(np.arange(161000, 206000, 4000))
+    MP['test_indices']  = list(np.arange(163000,206000,4000)) #list(np.arange(163000, 206000, 4000))
 
     MP['n_train'] = len(MP["train_indices"])*1000
     MP['n_dev'] = len(MP["dev_indices"])*1000

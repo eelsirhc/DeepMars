@@ -6,6 +6,7 @@ from mrcnn.model import log
 import h5py
 import pandas as pd
 import numpy as np
+import cv2
 
 class CraterConfig(Config):
     """Configuration for training on the toy shapes dataset.
@@ -111,15 +112,15 @@ class CraterDataset(utils.Dataset):
         specs in image_info.
         """
         info = self.image_info[image_id]
-        if info["image"] is None:
-            image = np.ones([info['height'], info['width'], 3], dtype=np.uint8)
-            im = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-            image[:,:,0] = im
-            image[:,:,1] = im
-            image[:,:,2] = im
-            self.image_info[image_id]["image"] = image
-        else:
-            image = self.image_info[image_id]["image"]
+#        if info["image"] is None:
+#            im = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+#            self.image_info[image_id]["image"] = im
+#        else:
+#            im = self.image_info[image_id]["image"]
+        image = np.ones([info['height'], info['width'], 3], dtype=np.uint8)
+        image[:,:,0] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+        image[:,:,1] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+        image[:,:,2] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
         return image
 
     def image_reference(self, image_id):
