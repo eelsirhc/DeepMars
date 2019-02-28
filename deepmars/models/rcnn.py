@@ -112,10 +112,10 @@ class CraterDataset(utils.Dataset):
         info = self.image_info[image_id]
         if info["image"] is None:
             im = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-            image = np.ones([info['height'], info['width'], 3], dtype=np.uint8)
+            image = np.ones([info['height'], info['width'], 1], dtype=np.uint8)
             image[:,:,0] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-            image[:,:,1] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
-            image[:,:,2] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+#            image[:,:,1] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
+#            image[:,:,2] = self.gen_imgs[info["path"]]["input_images"][info["image_index"]]
             self.image_info[image_id]["image"] = image
 #            logger.info("cached {}".format(image_id))
         else:
