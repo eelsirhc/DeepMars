@@ -34,22 +34,37 @@ def train_rcnn(config, MP):
 
     # training dataset
     dataset_train = rcnn.CraterDataset()
-    dataset_train.load_shapes(MP["train_indices"])
+    dataset_train.load_craters(MP["train_indices"])
     dataset_train.prepare()
 
     # Validation dataset
     dataset_val = rcnn.CraterDataset()
-    dataset_val.load_shapes(MP["dev_indices"])
+    dataset_val.load_craters(MP["dev_indices"])
     dataset_val.prepare()
 
+    COCO_MODEL_PATH = os.path.join(MP["save_dir"], "mask_rcnn_coco.h5")
+    # Download COCO trained weights from Releases if needed
+    if not os.path.exists(COCO_MODEL_PATH):
+            rcnn.utils.download_trained_weights(COCO_MODEL_PATH)
+            
     # ## Create Model
     # Create model in training mode
-    model = modellib.MaskRCNN(mode="training",
+    model = rcnn.modellib.MaskRCNN(mode="training",
                               config=config,
                               model_dir=MP["save_dir"])
 
+
+    from imgaug import augmenters as iaa
+    augmentation = iaa.SomeOf((0,2), [
+        iaa.Fliplr(0.5),
+        iaa.Flipud(0.5),
+        iaa.OneOf([iaa.Affine(rotate=90),
+                   iaa.Affine(rotate=180),
+                   iaa.Affine(rotate=270)])])
+
+#    
     # Which weights to start with?
-    init_with = "coco"  # imagenet, coco, or last
+    init_with = "last"#models/craters20190227T1444/mask_rcnn_craters_0004.h5"  # imagenet, coco, or last
 
     if init_with == "imagenet":
         model.load_weights(model.get_imagenet_weights(), by_name=True)
@@ -62,38 +77,49 @@ def train_rcnn(config, MP):
                                 "mrcnn_bbox", "mrcnn_mask"])
     elif init_with == "last":
         # Load the last model you trained and continue training
+        print(model.find_last())
         model.load_weights(model.find_last(), by_name=True)
+    else:
+        print(init_with)
+        model.load_weights(init_path, by_name=True)
 
-    # Train in two stages:
-    # 1. Only the heads. Here we're freezing all the
-    # backbone layers and training only the randomly
-    # initialized layers (i.e. the ones that we didn't
-    # use pre-trained weights from MS COCO). To train
-    # only the head layers, pass `layers='heads'` to
-    # the `train()` function.
-    #
-    # 2. Fine-tune all layers. For this simple example
-    # it's not necessary, but we're including it to
-    # show the process. Simply pass `layers="all` to
-    # train all layers.
-
-    # Train the head branches
-    # Passing layers="heads" freezes all layers except the head
-    # layers. You can also pass a regular expression to select
-    # which layers to train by name pattern.
-    model.train(dataset_train, dataset_val, 
-                learning_rate=config.LEARNING_RATE, 
-                epochs=4, 
-                layers='heads')
-
-    # Fine tune all layers
-    # Passing layers="all" trains all layers. You can also 
-    # pass a regular expression to select which layers to
-    # train by name pattern.
-    model.train(dataset_train, dataset_val, 
-                learning_rate=config.LEARNING_RATE / 10,
-                epochs=16, 
-                layers="all")
+    print("full training")
+    model.train(dataset_train, dataset_val,
+                learning_rate=config.LEARNING_RATE,
+                epochs=20,
+                augmentation=augmentation,
+                layers='all')
+#    # Train in two stages:
+#    # 1. Only the heads. Here we're freezing all the
+#    # backbone layers and training only the randomly
+#    # initialized layers (i.e. the ones that we didn't
+#    # use pre-trained weights from MS COCO). To train
+#    # only the head layers, pass `layers='heads'` to
+#    # the `train()` function.
+#    #
+#    # 2. Fine-tune all layers. For this simple example
+#    # it's not necessary, but we're including it to
+#    # show the process. Simply pass `layers="all` to
+#    # train all layers.
+#
+#
+# Train the head branches
+#    # Passing layers="heads" freezes all layers except the head
+#    # layers. You can also pass a regular expression to select
+#    # which layers to train by name pattern.
+#    model.train(dataset_train, dataset_val, 
+#                learning_rate=config.LEARNING_RATE, 
+#                epochs=4, 
+#                layers='heads')
+#
+#    # Fine tune all layers
+#    # Passing layers="all" trains all layers. You can also 
+#    # pass a regular expression to select which layers to
+#    # train by name pattern.
+#    model.train(dataset_train, dataset_val, 
+#                learning_rate=config.LEARNING_RATE / 10,
+#                epochs=16, 
+#                layers="all")
 
     # Save weights
     model.keras_model.save_weights(MP["final_save_name"])
@@ -120,16 +146,16 @@ def train_model(model):
     MP['dim'] = 256
 
     # Batch size: smaller values = less memory but less accurate gradient estimate
-    MP['bs'] = 4
+    MP['bs'] = 8
 
     # Number of training epochs.
     MP['epochs'] = 50
 
     # Number of train/valid/test samples, needs to be a multiple of batch size.
 
-    MP['train_indices'] = list(np.arange(162000, 208000, 2000))
-    MP['dev_indices']   = list(np.arange(161000, 206000, 4000))
-    MP['test_indices']  = list(np.arange(163000, 206000, 4000))
+    MP['train_indices'] = list(np.arange(162000,206000,2000)) #list(np.arange(162000, 208000, 2000))
+    MP['dev_indices']   = list(np.arange(161000,206000,4000)) #list(np.arange(161000, 206000, 4000))
+    MP['test_indices']  = list(np.arange(163000,206000,4000)) #list(np.arange(163000, 206000, 4000))
 
     MP['n_train'] = len(MP["train_indices"])*1000
     MP['n_dev'] = len(MP["dev_indices"])*1000
@@ -187,10 +213,13 @@ def train_model(model):
         # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
         TRAIN_ROIS_PER_IMAGE = 128
         # Use a small epoch since the data is simple
-        STEPS_PER_EPOCH = MP["n_train"]
+        STEPS_PER_EPOCH = MP["n_train"] // MP["bs"]
         # use small validation steps since the epoch is small
-        VALIDATION_STEPS = MP["n_dev"]
+        VALIDATION_STEPS = MP["n_dev"] // MP["bs"]
 
+        IMAGE_CHANNEL_COUNT = 1
+        MEAN_PIXEL = np.array([128.])
+        
     config = CraterConfig()
     train_rcnn(config,MP)
 
