@@ -4,7 +4,10 @@ from dotenv import find_dotenv, load_dotenv
 import logging
 from pathlib import Path
 import os
+import time
 import numpy as np
+import deepmars.utils as utils
+import h5py
 
 @click.group()
 def predict():
@@ -24,13 +27,13 @@ def predict():
 
 def load_model(path, CP):
     model = rcnn.modellib.MaskRCNN(mode="inference",
-                                   config=CP["dir_model"],
+                                   config=CP["config"],
                                    model_dir=CP["save_dir"])
-    model.load_weights(CP["model"], by_name=True)
+    model.load_weights(path, by_name=True)
     return model
 
 
-def get_model_preds(CP):
+def get_model_preds(CP, index=0):
     """Reads in or generates model predictions.
 
     Parameters
@@ -61,23 +64,34 @@ def get_model_preds(CP):
     # proc.preprocess(Data)
 
     model = load_model(CP['dir_model'], CP)
-    logger.info("Making prediction on %d images" % n_imgs)
-    preds = model.predict(Data[dtype][0])
-
+    logger.info("Making prediction on %d  images" % n_imgs)
+    bs=CP["config"].IMAGES_PER_GPU
+    ds = (bs,Data[dtype][0].shape[1],Data[dtype][0].shape[2],1)
+    from tqdm import tqdm, trange
+    #    preds = dict((ival,model.detect(d.reshape(ds))[0]) for ival,d in enumerate(tqdm(Data[dtype][0])))
+    preds = dict()
+    for istart in trange(0,len(Data[dtype][0]),bs):
+        p = model.detect(Data[dtype][0][istart:istart+bs].reshape(ds))
+        for ival, d in enumerate(p):
+            preds[istart+ival] = d
     dataset = rcnn.CraterDataset()
-    dataset_test.load_shapes(test_indices)
-    dataset_test.prepare()
+#    dataset_test.load_shapes(test_indices)
+#    dataset_test.prepare()
 
     logger.info("Finished prediction on %d images" % n_imgs)
    
     # save
-    #h5f = h5py.File(CP['dir_preds'], 'w')
-    #h5f.create_dataset(dtype, data=preds, compression='gzip', compression_opts=9)
+    h5f = h5py.File(CP['dir_preds'], 'w')
+    keys = ['rois','class_ids','scores','masks']
+    for ival, data in preds.items():
+        for k in keys:
+            h5f.create_dataset(dtype+"/"+str(ival)+"/"+k, data=data[k], compression='gzip', compression_opts=9)
+#    h5f.create_dataset(dtype, data=preds, compression='gzip', compression_opts=9)
     print("Successfully generated and saved model predictions.")
     return preds
 
 
-def extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, withmatches=False):
+def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, withmatches=False):
     """Top level function that extracts craters from model predictions,
     converts craters from pixel to real (degree, km) coordinates, and filters
     out duplicate detections across images.
@@ -97,14 +111,16 @@ def extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, withmat
     """
     logger = logging.getLogger(__name__)
     # Load/generate model preds
+    logger.info("Couldnt load model predictions {}, generating".format(CP["dir_preds"]))
+#    preds = get_model_preds(CP,index)
     try:
-        raise #preds = h5py.File(CP['dir_preds'], 'r')[CP['datatype']]
+        preds = h5py.File(CP['dir_preds'], 'r')[CP['datatype']]
         logger.info("Loaded model predictions successfully")
     except:
         logger.info("Couldnt load model predictions {}, generating".format(CP["dir_preds"]))
-        preds = get_model_preds(CP)
-    
+        preds = get_model_preds(CP)    
 
+    
     return None
 
 
@@ -146,7 +162,7 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
     CP['save_dir'] = 'models'
 
     # Location of where hdf5 data images are stored
-    CP['dir_data'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/processed.sys/%s_images%s.hdf5' % (prefix,indexstr))
+    CP['dir_data'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_images%s.hdf5' % (prefix,indexstr))
     # Location of where model predictions are/will be stored
     CP['dir_preds'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/rcnn/%s_preds%s.hdf5' % (CP['datatype'], indexstr))
     # Location of where final unique crater distribution will be stored
@@ -154,7 +170,7 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
     # Location of hdf file containing craters found
     CP['dir_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/rcnn/%s_craterdist%s.hdf5' % (CP['datatype'], indexstr))
     # Location of hdf file containing craters found
-    CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/processed.sys/%s_craters%s.hdf5' % (prefix, indexstr))
+    CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_craters%s.hdf5' % (prefix, indexstr))
     
     craters_unique = np.empty([0, 3])
 
@@ -164,29 +180,29 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
         # Train on 1 GPU and 8 images per GPU. We can put multiple images on each
         # GPU because the images are small. Batch size is 8 (GPUs * images/GPU).
         GPU_COUNT = 1
-        IMAGES_PER_GPU = MP["bs"]
+        IMAGES_PER_GPU = 1
         # Number of classes (including background)
         NUM_CLASSES = 1 + 1  # background + 1 shapes
         # Use small images for faster training. Set the limits of the small side
         # the large side, and that determines the image shape.
-        IMAGE_MIN_DIM = MP["dim"]
-        IMAGE_MAX_DIM = MP["dim"]
+        IMAGE_MIN_DIM = CP["dim"]
+        IMAGE_MAX_DIM = CP["dim"]
         # Use smaller anchors because our image and objects are small
         RPN_ANCHOR_SCALES = (8, 16, 32, 64, 128)  # anchor side in pixels
         # Reduce training ROIs per image because the images are small and have
         # few objects. Aim to allow ROI sampling to pick 33% positive ROIs.
         TRAIN_ROIS_PER_IMAGE = 128
         # Use a small epoch since the data is simple
-        STEPS_PER_EPOCH = MP["n_train"] // MP["bs"]
+        STEPS_PER_EPOCH = 1
         # use small validation steps since the epoch is small
-        VALIDATION_STEPS = MP["n_dev"] // MP["bs"]
+        VALIDATION_STEPS = 1
 
         IMAGE_CHANNEL_COUNT = 1
         MEAN_PIXEL = np.array([128.])
 
     class InferenceConfig(CraterConfig):
         GPU_COUNT = 1
-        IMAGES_PER_GPU = 1
+        IMAGES_PER_GPU = 4
 
     config = InferenceConfig()
     CP["config"] = config
