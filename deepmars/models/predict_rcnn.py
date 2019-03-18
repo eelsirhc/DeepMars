@@ -6,8 +6,16 @@ from pathlib import Path
 import os
 import time
 import numpy as np
+import deepmars.features.template_match_target as tmt
+import deepmars.features.rcnn_features as rcnnf
+import deepmars.utils.processing as proc
 import deepmars.utils as utils
 import h5py
+import pandas as pd
+from joblib import Parallel, delayed
+from tqdm import tqdm, trange
+from deepmars.models.common import estimate_longlatdiamkm, add_unique_craters
+import sys
 
 @click.group()
 def predict():
@@ -67,7 +75,6 @@ def get_model_preds(CP, index=0):
     logger.info("Making prediction on %d  images" % n_imgs)
     bs=CP["config"].IMAGES_PER_GPU
     ds = (bs,Data[dtype][0].shape[1],Data[dtype][0].shape[2],1)
-    from tqdm import tqdm, trange
     #    preds = dict((ival,model.detect(d.reshape(ds))[0]) for ival,d in enumerate(tqdm(Data[dtype][0])))
     preds = dict()
     for istart in trange(0,len(Data[dtype][0]),bs):
@@ -90,6 +97,37 @@ def get_model_preds(CP, index=0):
     print("Successfully generated and saved model predictions.")
     return preds
 
+def match_rcnn(pred, craters, i, index, dim, withmatches=False):
+    img = proc.get_id(i+index)
+    found=False
+    valid=False
+    diam = 'Diameter (pix)'
+    csv=[]
+    if withmatches:
+        N_match, N_csv, N_detect, maxr, err_lo, err_la, err_r, frac_dupes = -1,-1,-1,-1,-1,-1,-1,-1
+        
+        if img in craters:
+            csv = craters[img]
+            found=True
+        if found:
+            minrad, maxrad = 3,50
+            cutrad = 0.8
+            csv = csv[(csv[diam] < 2 * maxrad) & (csv[diam] > 2 * minrad)]
+            csv = csv[(csv['x'] + cutrad * csv[diam] / 2 <= dim[0])]
+            csv = csv[(csv['y'] + cutrad * csv[diam] / 2 <= dim[1])]
+            csv = csv[(csv['x'] - cutrad * csv[diam] / 2 > 0)]
+            csv = csv[(csv['y'] - cutrad * csv[diam] / 2 > 0)]
+            if len(csv) >= 3:
+                valid = True
+                csv = np.asarray((csv['x'], csv['y'], csv[diam] / 2)).T
+    if valid:
+        coords, N_match, N_csv, N_detect, maxr, err_lo, err_la, err_r, frac_dupes = rcnnf.rcnn_template_match_t2c(pred,csv,name=i)
+        df2 = pd.DataFrame(np.array([N_match, N_csv, N_detect, maxr, err_lo, err_la, err_r, frac_dupes])[None,:],
+                           columns=["N_match", "N_csv", "N_detect", "maxr", "err_lo", "err_la", "err_r", "frac_dupes"],index=[img])
+    else:
+        coords = rcnnf.process_image(pred,i)
+        df2=None
+    return [coords,df2]
 
 def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, withmatches=False):
     """Top level function that extracts craters from model predictions,
@@ -111,14 +149,123 @@ def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, wi
     """
     logger = logging.getLogger(__name__)
     # Load/generate model preds
-    logger.info("Couldnt load model predictions {}, generating".format(CP["dir_preds"]))
-#    preds = get_model_preds(CP,index)
     try:
         preds = h5py.File(CP['dir_preds'], 'r')[CP['datatype']]
         logger.info("Loaded model predictions successfully")
-    except:
+        print("Loaded model predictions successfully")
+    except Exception as e:
+        raise
         logger.info("Couldnt load model predictions {}, generating".format(CP["dir_preds"]))
-        preds = get_model_preds(CP)    
+#        preds = get_model_preds(CP)    
+
+    #copied from predict_model
+        
+    # need for long/lat bounds
+    P = h5py.File(CP['dir_data'], 'r')
+
+    
+    llbd, pbd, distcoeff = ('longlat_bounds', 'pix_bounds',
+                            'pix_distortion_coefficient')
+    #r_moon = 1737.4
+    dim = (float(CP['dim']), float(CP['dim']))
+
+    N_matches_tot = 0
+    if start < 0:
+        start = 0
+    if stop < 0:
+        stop = P['input_images'].shape[0]
+
+
+    start = np.clip(start,0,P['input_images'].shape[0]-1)
+    stop =  np.clip(stop,1,P['input_images'].shape[0])
+    craters_h5 = pd.HDFStore(CP['dir_craters'],'w')
+
+
+    csvs=[]
+    if withmatches:
+        craters = pd.HDFStore(CP['dir_input_craters'], 'r')
+        matches = []#pd.DataFrame(columns=["N_match", "N_csv", "N_detect", "maxr", "err_lo", "err_la", "err_r", "frac_dupes"])
+
+    full_craters = dict()
+    if withmatches:
+        for i in range(start,stop):
+            img = proc.get_id(i+index)
+            if img in craters:
+                full_craters[img]=craters[img]
+
+    #end copy
+    picklable = dict()
+
+    for k in trange(start,stop):
+        picklable[str(k)] = dict((kk,vv[:]) for kk,vv in preds[str(k)].items())
+
+    res = Parallel(n_jobs=1#int(utils.getenv("DM_NCPU"))
+                   , verbose=8, batch_size=5)(delayed(match_rcnn)(picklable[str(i)],full_craters, i,index,dim,withmatches=withmatches) for i in range(start,stop))
+
+    res = dict([(k,res[k]) for k in range(start,stop)])
+#    res = dict([(k,match_rcnn(preds[str(k)],full_craters, k,index,dim,withmatches=withmatches)) for k in trange(start,stop)])
+
+#
+    for i in range(start, stop):
+        data,df2 = res[i]
+        data["image_name"] = np.float32(index + data["image_name"])
+        img = proc.get_id(i+index)
+        if img not in P[llbd]:
+            # no image probably
+            if len(data["x_circle"].dropna()):
+                print("problem image: {}".format(img))
+            continue
+        if withmatches:
+            matches.append(df2)
+
+        # convert, add to master dist
+        dc = pd.DataFrame(data.dropna(how='any',subset=["x_circle","y_circle","radius_circle"]))
+        if len(dc) > 0:
+            #circles
+            new_craters_unique = estimate_longlatdiamkm(
+                dim, P[llbd][img], P[distcoeff][img][0], dc[["x_circle","y_circle","radius_circle"]].values).T
+
+            dc['Long'] = new_craters_unique[0]
+            dc['Lat'] = new_craters_unique[1]
+            dc['radius_km'] = new_craters_unique[2]
+            dc["Diameter (km)"]  = dc["radius_km"]*2
+            dc["Diameter (pix)"] = dc["radius_circle"]*2
+            if craters_unique is None:
+                craters_unique = pd.DataFrame([], columns=dc.columns)
+
+            N_matches_tot += len(dc)
+            ind = ["Long","Lat","radius_km"]
+
+            # Only add unique (non-duplicate) craters
+            
+            if len(dc):
+                cu,indices = add_unique_craters(dc[ind].values,
+                                                craters_unique[ind].values,
+                                                CP['llt2'], CP['rt'], return_indices=True)
+                craters_unique = craters_unique.append(dc.iloc[indices])
+            lab = ["Lat","Long","Diameter (km)","x_circle","y_circle","Diameter (pix)"]+list(craters_unique.columns)
+            labels = []
+            for l in lab:
+                if l not in labels:
+                    labels.append(l)
+            craters_unique["image_name"] = craters_unique["image_name"].astype(int)
+            dc["image_name"] = dc["image_name"].astype(int)
+            craters_h5[img] = dc[labels]
+            craters_h5.flush()
+            
+    logger.info("Saving to %s with %d unique craters" % (CP['dir_result'],len(craters_unique)))
+    np.save(CP['dir_result'], craters_unique)
+    alldata = craters_unique#*np.array([1,1,2])[None,:]
+#    df = pd.DataFrame(alldata,columns=['Long','Lat','Diameter (km)'])
+    craters_h5["all"] = alldata#df[['Lat','Long','Diameter (km)']]
+    if withmatches:
+        craters_h5["matches"] = pd.concat(matches)
+        craters.close()
+    craters_h5.flush()
+    craters_h5.close()
+
+    return craters_unique
+
 
     
     return None
@@ -172,7 +319,7 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
     # Location of hdf file containing craters found
     CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_craters%s.hdf5' % (prefix, indexstr))
     
-    craters_unique = np.empty([0, 3])
+    craters_unique = None
 
     class CraterConfig(rcnn.Config):
         # Give the configuration a recognizable name

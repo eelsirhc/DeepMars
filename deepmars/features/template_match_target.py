@@ -102,7 +102,11 @@ def template_match_t(target, minrad=minrad_, maxrad=maxrad_,
         
         dL = ((Long - lo)**2 + (Lat - la)**2) / minr**2
         dR = abs(Rad - r) / minr
-        index = (dR < rad_thresh) & (dL < longlat_thresh2)
+        try:
+            index = (dR < rad_thresh) & (dL < longlat_thresh2)
+        except:
+            print(dL, dR)
+                
         if len(np.where(index == True)[0]) > 1:
             # replace current coord with max match probability coord in
             # duplicate list

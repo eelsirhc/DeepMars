@@ -55,16 +55,17 @@ def train_rcnn(config, MP):
 
 
     from imgaug import augmenters as iaa
-    augmentation = iaa.SomeOf((0,2), [
-        iaa.Fliplr(0.5),
-        iaa.Flipud(0.5),
-        iaa.OneOf([iaa.Affine(rotate=90),
-                   iaa.Affine(rotate=180),
-                   iaa.Affine(rotate=270)])])
+    augmentation = iaa.Sequential([
+        iaa.SomeOf((0,2), [
+            iaa.Fliplr(0.5),
+            iaa.Flipud(0.5),
+            iaa.OneOf([iaa.Affine(rotate=90),
+                       iaa.Affine(rotate=180),
+                       iaa.Affine(rotate=270)])])])
 
 #    
     # Which weights to start with?
-    init_with = "last"#models/craters20190227T1444/mask_rcnn_craters_0004.h5"  # imagenet, coco, or last
+    init_with = "None"#models/craters20190227T1444/mask_rcnn_craters_0004.h5"  # imagenet, coco, or last
 
     if init_with == "imagenet":
         model.load_weights(model.get_imagenet_weights(), by_name=True)
@@ -80,13 +81,20 @@ def train_rcnn(config, MP):
         print(model.find_last())
         model.load_weights(model.find_last(), by_name=True)
     else:
-        print(init_with)
-        model.load_weights(init_path, by_name=True)
+        pass
+#        print(init_with)
+#        model.load_weights(init_path, by_name=True)
 
     print("full training")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=20,
+                epochs=10,
+                augmentation=augmentation,
+                layers='all')
+
+    model.train(dataset_train, dataset_val,
+                learning_rate=config.LEARNING_RATE/10,
+                epochs=10,
                 augmentation=augmentation,
                 layers='all')
 #    # Train in two stages:

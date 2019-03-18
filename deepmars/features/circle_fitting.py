@@ -1,4 +1,7 @@
-from fiterror import FitError
+from . import fiterror
+from skimage import io, color, measure, draw, img_as_bool
+import numpy as np
+from scipy import optimize
 
 def cost_circle(params, image):
     """Cost function for circle finding."""
@@ -22,7 +25,7 @@ def iou_circle(x0, y0, r, image):
 
 def calc_R(xc, yc, x, y):
     """Calculate the distance of each data points from the center (xc, yc) """
-    return np.sqrt((x-xc)**2 + (y-yc)**2)
+    return np.clip(np.sqrt((x-xc)**2 + (y-yc)**2),1,256)
 
 
 def f_2b(c, x, y):
@@ -39,7 +42,6 @@ def Df_2b(c, x, y):
     be coherent with the col_deriv option of leastsq."""
     xc, yc = c
     df2b_dc = np.empty((len(c), x.size))
-
     Ri = calc_R(xc, yc, x, y)
     df2b_dc[0] = (xc - x)/Ri                   # dR/dxc
     df2b_dc[1] = (yc - y)/Ri                   # dR/dyc
@@ -76,7 +78,8 @@ def centroid(fm, roi):
         res = [y0+roi[1], x0+roi[0], r*2]
         return res
     except Exception as e:
-        raise FitError(e)
+        raise
+        raise fiterror.FitError(e)
 
 
 def proc_circle(fm, roi):
@@ -84,7 +87,9 @@ def proc_circle(fm, roi):
 
     try:
         data = np.where(fm)
+        if (fm.max() == 0 or len(data) < 1):
+            raise fiterror.FitError("No data to fit in this mask")
         center, radius = circle_fit(data)
         return [center[1],center[0],radius*2]
     except Exception as e:
-        raise FitError(e)
+        raise fiterror.FitError(e)
