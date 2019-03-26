@@ -61,11 +61,17 @@ def train_rcnn(config, MP):
             iaa.Flipud(0.5),
             iaa.OneOf([iaa.Affine(rotate=90),
                        iaa.Affine(rotate=180),
-                       iaa.Affine(rotate=270)])])])
+                       iaa.Affine(rotate=270)])
+        ]),
+        iaa.Sometimes(0.5,iaa.OneOf([iaa.GaussianBlur((0.0, 3.0)),
+                                     iaa.AverageBlur((2, 5)),
+                                     iaa.GammaContrast((0.5,2.0))
+                   ]))
+    ])
 
 #    
     # Which weights to start with?
-    init_with = "None"#models/craters20190227T1444/mask_rcnn_craters_0004.h5"  # imagenet, coco, or last
+    init_with = None#"last"#"#models/craters20190227T1444/mask_rcnn_craters_0004.h5"  # imagenet, coco, or last
 
     if init_with == "imagenet":
         model.load_weights(model.get_imagenet_weights(), by_name=True)
@@ -88,13 +94,13 @@ def train_rcnn(config, MP):
     print("full training")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=10,
+                epochs=5,
                 augmentation=augmentation,
                 layers='all')
 
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE/10,
-                epochs=10,
+                epochs=20,
                 augmentation=augmentation,
                 layers='all')
 #    # Train in two stages:
@@ -163,7 +169,7 @@ def train_model(model):
 
     MP['train_indices'] = list(np.arange(162000,206000,2000)) #list(np.arange(162000, 208000, 2000))
     MP['dev_indices']   = list(np.arange(161000,206000,4000)) #list(np.arange(161000, 206000, 4000))
-    MP['test_indices']  = list(np.arange(163000,206000,4000)) #list(np.arange(163000, 206000, 4000))
+    MP['test_indices']  = list(np.arange(163000,206000,2000)) #list(np.arange(163000, 206000, 4000))
 
     MP['n_train'] = len(MP["train_indices"])*1000
     MP['n_dev'] = len(MP["dev_indices"])*1000
@@ -227,7 +233,7 @@ def train_model(model):
 
         IMAGE_CHANNEL_COUNT = 1
         MEAN_PIXEL = np.array([128.])
-        
+        BACKBONE = "resnet50"        
     config = CraterConfig()
     train_rcnn(config,MP)
 

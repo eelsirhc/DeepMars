@@ -154,10 +154,9 @@ def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, wi
         logger.info("Loaded model predictions successfully")
         print("Loaded model predictions successfully")
     except Exception as e:
-        raise
         logger.info("Couldnt load model predictions {}, generating".format(CP["dir_preds"]))
-#        preds = get_model_preds(CP)    
-
+        preds = get_model_preds(CP)    
+#    print(list(preds.keys()), CP["datatype"])
     #copied from predict_model
         
     # need for long/lat bounds
@@ -196,8 +195,8 @@ def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, wi
     #end copy
     picklable = dict()
 
-    for k in trange(start,stop):
-        picklable[str(k)] = dict((kk,vv[:]) for kk,vv in preds[str(k)].items())
+    for k in preds.keys():
+        picklable[str(k)] = dict((kk,vv[:]) for kk,vv in preds[k].items())
 
     res = Parallel(n_jobs=1#int(utils.getenv("DM_NCPU"))
                    , verbose=8, batch_size=5)(delayed(match_rcnn)(picklable[str(i)],full_craters, i,index,dim,withmatches=withmatches) for i in range(start,stop))
@@ -276,11 +275,12 @@ def rcnn_extract_unique_craters(CP, craters_unique, index=0, start=0,stop=-1, wi
 @click.argument('rt',type=float)
 @click.option('--index',type=int, default=None)
 @click.option('--prefix',default="test")
+@click.option('--directory',default="rcnn")
 @click.option('--start',default=-1)
 @click.option('--stop',default=-1)
 @click.option('--matches',is_flag=True,default=False)
 @click.option("--model",default=None)
-def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
+def make_prediction(llt2, rt, index, directory, prefix, start, stop, matches, model):
     """ Make predictions.
     """
     logger = logging.getLogger(__name__)
@@ -311,11 +311,11 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
     # Location of where hdf5 data images are stored
     CP['dir_data'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_images%s.hdf5' % (prefix,indexstr))
     # Location of where model predictions are/will be stored
-    CP['dir_preds'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/rcnn/%s_preds%s.hdf5' % (CP['datatype'], indexstr))
+    CP['dir_preds'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s/%s_preds%s.hdf5' % (directory, CP['datatype'], indexstr))
     # Location of where final unique crater distribution will be stored
-    CP['dir_result'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/rcnn/%s_craterdist%s.npy' % (CP['datatype'], indexstr))
+    CP['dir_result'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s/%s_craterdist%s.npy' % (directory, CP['datatype'], indexstr))
     # Location of hdf file containing craters found
-    CP['dir_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/rcnn/%s_craterdist%s.hdf5' % (CP['datatype'], indexstr))
+    CP['dir_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s/%s_craterdist%s.hdf5' % (directory, CP['datatype'], indexstr))
     # Location of hdf file containing craters found
     CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_craters%s.hdf5' % (prefix, indexstr))
     
