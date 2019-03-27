@@ -420,7 +420,9 @@ def make_dataset(filename, istart, amt,sample,systematic,prefix, source_cdim, su
         craters = ReadRobbinsCraters()
         logger.info("found {} craters in the database".format(len(craters)))
 #
-    img = MarsDEM(filename).T
+    logger.info("Mars Reading image :{}".format(filename))
+    img = MarsTHEMIS(filename)[::8,::8].T
+#    img = MarsDEM(filename).T
     logger.info("Mars DEM resolution {} by {}".format(img.shape[0],img.shape[1]))
 
     if use_mpi4py:

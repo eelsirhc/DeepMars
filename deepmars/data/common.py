@@ -11,7 +11,34 @@ import h5py
 import deepmars.utils.transform as trf
 import tifffile
 import os
+import glymur
 
+def MarsTHEMIS(filename=None):
+    """Reads a THEMIS ir file from a large jpeg2000 file.
+
+    Parameters
+    ----------
+    filename : str, optional
+        path of the image filefile, default to environment variable DM_MarsTHEMIS
+
+    Returns
+    --------
+    dem : numpy.ndarray
+        The image as a numpy array.
+    """
+
+    if filename is None:
+        filename = os.getenv("DM_MarsTHEMIS")
+    name,ext = os.path.splitext(filename)
+    if ext==".tif":
+        dem = tifffile.imread(filename)
+    elif ext==".png":
+        dem = imageio.imread(filename)
+    elif ext==".jp2":
+        dem = glymur.Jp2k(filename)
+    #print(dem.shape,filename)
+    return dem
+    
 def MarsDEM(filename=None):
     """Reads the Mars DEM from a large tiff file.
 
@@ -54,6 +81,8 @@ def ReadRobbinsCraters(filename=None):
         filename = os.getenv("DM_CraterTable")
         #print(filename)
 #    craters = pd.read_table(filename,sep='\t',engine='python',index_col=False)
+    print(filename)
+#    craters = pd.read_csv(filename,index_col=False,sep='\t',engine='python')
     craters = pd.read_csv(filename,index_col=False)
     keep_columns = ["LATITUDE_CIRCLE_IMAGE",
                     "LONGITUDE_CIRCLE_IMAGE",
