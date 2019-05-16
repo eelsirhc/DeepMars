@@ -87,6 +87,7 @@ def train_rcnn(config, MP):
         print(model.find_last())
         model.load_weights(model.find_last(), by_name=True)
     else:
+        print("No weights")
         pass
 #        print(init_with)
 #        model.load_weights(init_path, by_name=True)
@@ -167,9 +168,9 @@ def train_model(model):
 
     # Number of train/valid/test samples, needs to be a multiple of batch size.
 
-    MP['train_indices'] = list(np.arange(162000,206000,2000)) #list(np.arange(162000, 208000, 2000))
-    MP['dev_indices']   = list(np.arange(161000,206000,4000)) #list(np.arange(161000, 206000, 4000))
-    MP['test_indices']  = list(np.arange(163000,206000,2000)) #list(np.arange(163000, 206000, 4000))
+    MP['train_indices'] = list(np.arange(0,20000,1000)) #list(np.arange(162000, 208000, 2000))
+    MP['dev_indices']   = list(np.arange(20000,25000,1000)) #list(np.arange(161000, 206000, 4000))
+    MP['test_indices']  = list(np.arange(25000,26000,1000)) #list(np.arange(163000, 206000, 4000))
 
     MP['n_train'] = len(MP["train_indices"])*1000
     MP['n_dev'] = len(MP["dev_indices"])*1000

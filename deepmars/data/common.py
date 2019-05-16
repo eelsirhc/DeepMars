@@ -329,8 +329,8 @@ def WarpCraterLoc(craters, geoproj, oproj, oextent, imgdim, llbd=None,
     # [:,:2] becaus we don't need elevation data
     # If statement is in case ctr_wrp has nothing in it
     if ctr_wrp.shape[0]:
-        ilong = ctr_wrp["Long"].as_matrix()
-        ilat = ctr_wrp["Lat"].as_matrix()
+        ilong = ctr_wrp["Long"].values
+        ilat = ctr_wrp["Lat"].values
         res = oproj.transform_points(x=ilong, y=ilat,
                                      src_crs=geoproj)[:, :2]
 
@@ -637,8 +637,8 @@ def AddPlateCarree_XY(craters, imgdim, cdim=[-180., 180., -90., 90.],
         "upper" means that [0,0] is upper-left corner of image;
         "lower" means it is bottom-left.
     """
-    x, y = trf.coord2pix(craters["Long"].as_matrix(),
-                         craters["Lat"].as_matrix(),
+    x, y = trf.coord2pix(craters["Long"].values,
+                         craters["Lat"].values,
                          cdim, imgdim, origin=origin)
     craters["x"] = x
     craters["y"] = y

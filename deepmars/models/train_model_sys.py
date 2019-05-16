@@ -15,7 +15,7 @@ from keras.layers.core import Dropout, Reshape
 from keras.regularizers import l2
 
 from keras.optimizers import Adam
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, TensorBoard
 from keras import backend as K
 K.set_image_dim_ordering('tf')
 
@@ -464,6 +464,17 @@ def train_and_test_model(Data, Craters, MP, i_MP):
                                                        batch_size=bs),
                 validation_steps=MP['n_dev']/bs,
                 callbacks=[
+                    TensorBoard(log_dir="./logs",
+                                histogram_freq=0,
+                                batch_size=bs,
+                                write_graph=True,
+                                write_grads=False,
+                                write_images=False,
+                                embeddings_freq=0,
+                                embeddings_layer_names=None,
+                                embeddings_metadata=None,
+                                embeddings_data=None,
+                                update_freq='epoch'),
                     EarlyStopping(monitor='val_loss', patience=3, verbose=0)])
         else:
             model.fit_generator(
@@ -500,7 +511,7 @@ def train_and_test_model(Data, Craters, MP, i_MP):
     print("###################################")
 
 ########################
-def get_models(MP):
+def get_models(MP,prefix="sys"):
     """Top-level function that loads data files and calls train_and_test_model.
 
     Parameters
@@ -512,7 +523,7 @@ def get_models(MP):
     n_train, n_dev, n_test = MP['n_train'], MP['n_dev'], MP['n_test']
 
     # Load data
-    def load_files(numbers,test, this_dataset):
+    def load_files(numbers,test, this_dataset,prefix="sys"):
         res0 = []
         res1 = []
         files = []
@@ -521,24 +532,24 @@ def get_models(MP):
         npic = 0
         if not test or (test and this_dataset):
             for n in tqdm(numbers):
-                files.append(h5py.File(os.path.join(dir,"sys_images_{0:05d}.hdf5".format(n)),'r'))
+                files.append(h5py.File(os.path.join(dir,"{0}_images_{1:05d}.hdf5".format(prefix, n)),'r'))
                 images.extend( ["img_{0:05d}".format(a) for a in np.arange(n,n+1000)])
                 res0.append(files[-1]["input_images"][:].astype('float32'))
                 npic = npic + len(res0[-1])
                 res1.append(files[-1]["target_masks"][:].astype('float32'))
                 files[-1].close()
-                craters.append(pd.HDFStore(os.path.join(dir,"sys_craters_{0:05d}.hdf5".format(n)),'r'))
+                craters.append(pd.HDFStore(os.path.join(dir,"{0}_craters_{1:05d}.hdf5".format(prefix,n)),'r'))
             res0 = np.vstack(res0)
             res1 = np.vstack(res1)
         return files, res0, res1,npic,craters, images
 
-    train_files, train0,train1, Ntrain,train_craters,train_images = load_files(MP["train_indices"], MP["test"],MP["test_dataset"]=="train")
+    train_files, train0,train1, Ntrain,train_craters,train_images = load_files(MP["train_indices"], MP["test"],MP["test_dataset"]=="train",prefix=prefix)
     print(Ntrain,n_train)
 
-    dev_files, dev0,dev1, Ndev,dev_craters,dev_images = load_files(MP["dev_indices"],MP["test"],MP["test_dataset"]=="dev")
+    dev_files, dev0,dev1, Ndev,dev_craters,dev_images = load_files(MP["dev_indices"],MP["test"],MP["test_dataset"]=="dev",prefix=prefix)
     print(Ndev,n_dev)
 
-    test_files, test0,test1, Ntest,test_craters,test_images = load_files(MP["test_indices"], MP["test"], MP["test_dataset"]=="test")
+    test_files, test0,test1, Ntest,test_craters,test_images = load_files(MP["test_indices"], MP["test"], MP["test_dataset"]=="test",prefix=prefix)
     print(Ntest,n_test)
 
     Data = {
@@ -570,7 +581,8 @@ def get_models(MP):
 @click.option("--test",is_flag=True,default=False)
 @click.option("--test_dataset", default="dev")
 @click.option("--model", default=None)
-def train_model(test,test_dataset,model):
+@click.option("--prefix", default="sys")
+def train_model(test,test_dataset,model,prefix):
     """Run Convolutional Neural Network Training
     
     Execute the training of a (UNET) Convolutional Neural Network on
@@ -594,9 +606,9 @@ def train_model(test,test_dataset,model):
     
     # Number of train/valid/test samples, needs to be a multiple of batch size.
 
-    MP['train_indices'] = list(np.arange(162000,208000,2000))
-    MP['dev_indices']   = list(np.arange(161000,206000,4000))
-    MP['test_indices']  = list(np.arange(163000,206000,4000))
+    MP['train_indices'] = list(np.arange(0,20000,1000))
+    MP['dev_indices']   = list(np.arange(20000,25000,1000))
+    MP['test_indices']  = list(np.arange(25000,26000,1000))
     #    MP['test_indices']  = 90000#list(np.arange(10000,184000,8000))
                                  
     MP['n_train'] = len(MP["train_indices"])*1000
@@ -639,7 +651,7 @@ def train_model(test,test_dataset,model):
     #    MP['N_runs'] = 2
     #    MP['lambda']=[1e-4,1e-4]
     print(MP)
-    get_models(MP)
+    get_models(MP,prefix=prefix)
 
 
 if __name__ == '__main__':

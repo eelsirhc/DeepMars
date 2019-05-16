@@ -186,7 +186,7 @@ def extract_unique_craters(CP, craters_unique,index=0, start=0,stop=-1, withmatc
                                                  new_craters_unique))
             
             data = np.hstack([new_craters_unique*np.array([1,1,2])[None,:],coords*np.array([1,1,2])[None,:]])
-            df = pd.DataFrame(data,columns=['Long','Lat','DiameOBter (km)','x','y','Diameter (pix)'])
+            df = pd.DataFrame(data,columns=['Long','Lat','Diameter (km)','x','y','Diameter (pix)'])
             craters_h5[img] = df[['Lat','Long','Diameter (km)','x','y','Diameter (pix)']]
             craters_h5.flush()
             
@@ -232,7 +232,7 @@ def cnn_prediction(index, prefix, output_prefix, model):
         if ivalue is None:
             indexstr = ""
         else:
-            indexstr = "_{:05d}".format(ivalue)
+            indexstr = "_{:06d}".format(ivalue)
 
         if output_prefix is None:
             output_prefix = prefix
@@ -266,7 +266,7 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
     if index is None:
         indexstr = ""
     else:
-        indexstr = "_{:05d}".format(index)
+        indexstr = "_{:06d}".format(index)
 
     # Crater Parameters
     CP = {}
@@ -291,15 +291,15 @@ def make_prediction(llt2, rt, index, prefix, start, stop, matches, model):
 #    CP['dir_result'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_craterdist.npy' % (CP['datatype']))
 #
     # Location of where hdf5 data images are stored
-    CP['dir_data'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/processed.sys/%s_images%s.hdf5' % (prefix,indexstr))
+    CP['dir_data'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_images%s.hdf5' % (prefix,indexstr))
     # Location of where model predictions are/will be stored
-    CP['dir_preds'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/mars_trained/%s_preds%s.hdf5' % (CP['datatype'], indexstr))
+    CP['dir_preds'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s_preds%s.hdf5' % (CP['datatype'], indexstr))
     # Location of where final unique crater distribution will be stored
-    CP['dir_result'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/mars_trained/%s_craterdist%s.npy' % (CP['datatype'], indexstr))
+    CP['dir_result'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s_craterdist%s.npy' % (CP['datatype'], indexstr))
     # Location of hdf file containing craters found
-    CP['dir_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/mars_trained/%s_craterdist%s.hdf5' % (CP['datatype'], indexstr))
+    CP['dir_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/predictions/%s_craterdist%s.hdf5' % (CP['datatype'], indexstr))
     # Location of hdf file containing craters found
-    CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/processed.sys/%s_craters%s.hdf5' % (prefix, indexstr))
+    CP['dir_input_craters'] = os.path.join(utils.getenv("DM_ROOTDIR"),'data/processed/%s_craters%s.hdf5' % (prefix, indexstr))
     
     craters_unique = np.empty([0, 3])
     craters_unique = extract_unique_craters(CP, craters_unique,index=index, start=start, stop=stop, withmatches=matches)
