@@ -91,7 +91,7 @@ def add_unique_craters(craters, craters_unique, thresh_longlat2, thresh_rad):
     craters_unique : array
         Modified master array of unique crater tuples with new crater entries.
     """
-    k2d = 180. / (np.pi * 3391.0)       # km to deg
+    k2d = 180. / (np.pi * 3389.0)       # km to deg
     Long, Lat, Rad = craters_unique.T
     for j in range(len(craters)):
         lo, la, r = craters[j].T
@@ -144,7 +144,7 @@ def estimate_longlatdiamkm(dim, llbd, distcoeff, coords):
     radii_km = radii_pix * km_per_pix
 
     # Determine long/lat.
-    deg_per_pix = km_per_pix * 180. / (np.pi * 3371.0)
+    deg_per_pix = km_per_pix * 180. / (np.pi * 3389.0)
     long_central = 0.5 * (llbd[0] + llbd[1])
     lat_central = 0.5 * (llbd[2] + llbd[3])
 

@@ -39,7 +39,7 @@ def data():
 
 def GenDataset(img, craters, outhead, rawlen_range=[512, 1024],
                rawlen_dist='log', ilen=256, cdim=[-180., 180., -90., 90.],
-               arad=3371., minpix=0, tglen=256, binary=True, rings=True,
+               arad=3389., minpix=0, tglen=256, binary=True, rings=True,
                ringwidth=1, truncate=True, amt=100, istart=0, seed=None,
                verbose=False,sample=False, systematic=False):
     """Generates random dataset from a global DEM and crater catalogue.
@@ -400,7 +400,7 @@ def make_dataset(filename, istart, amt,sample,systematic,prefix, source_cdim, su
     minpix = 3.
     
     # Radius of the world in km (1737.4 for Moon).
-    R_km = 3371.0
+    R_km = 3389.0
     
     ### Target mask arguments. ###
     
